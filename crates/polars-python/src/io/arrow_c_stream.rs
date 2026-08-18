@@ -52,21 +52,27 @@ impl PyArrowCStreamReader {
         Wrap(self.schema.clone())
     }
 
-    fn next_batch(&self, with_columns: Option<Vec<PlSmallStr>>) -> PyResult<Option<PyDataFrame>> {
-        let mut state = self.state.lock();
-        if state.projection.is_none() {
-            state.projection = Some(with_columns.map(|cols| cols.into_iter().collect()));
-        }
+    fn next_batch(
+        &self,
+        py: Python<'_>,
+        with_columns: Option<Vec<PlSmallStr>>,
+    ) -> PyResult<Option<PyDataFrame>> {
+        py.detach(|| {
+            let mut state = self.state.lock();
+            if state.projection.is_none() {
+                state.projection = Some(with_columns.map(|cols| cols.into_iter().collect()));
+            }
 
-        let array = match unsafe { state.reader.next() } {
-            Some(Ok(array)) => array,
-            Some(Err(e)) => return Err(PyPolarsErr::from(e).into()),
-            None => return Ok(None),
-        };
+            let array = match unsafe { state.reader.next() } {
+                Some(Ok(array)) => array,
+                Some(Err(e)) => return Err(PyPolarsErr::from(e).into()),
+                None => return Ok(None),
+            };
 
-        let projection = state.projection.as_ref().unwrap().as_ref();
-        let df = struct_array_to_df(array, projection).map_err(PyPolarsErr::from)?;
-        Ok(Some(PyDataFrame::new(df)))
+            let projection = state.projection.as_ref().unwrap().as_ref();
+            let df = struct_array_to_df(array, projection).map_err(PyPolarsErr::from)?;
+            Ok(Some(PyDataFrame::new(df)))
+        })
     }
 }
 
